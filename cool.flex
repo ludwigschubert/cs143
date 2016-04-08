@@ -49,9 +49,26 @@ extern YYSTYPE cool_yylval;
  * Define names for regular expressions here.
  */
 
-DARROW          =>
+WHITESPACE [ \t\v\f\r]*
+NEWLINE \n
+DIGIT [0-9]
+OBJECT_ID [a-z][a-zA-Z0-9_]*
+TYPE_ID   [A-Z][a-zA-Z0-9_]*
+DARROW =>
+ELSE (?i:else)
+IF   (?i:if)
+FI   (?i:fi)
+THEN (?i:then)
 
 %%
+
+{NEWLINE} { curr_lineno++; }
+{WHITESPACE} { }
+
+ /*
+  * Digits
+  */
+
 
  /*
   *  Nested comments
@@ -61,13 +78,40 @@ DARROW          =>
  /*
   *  The multiple-character operators.
   */
-{DARROW}		{ return (DARROW); }
+{DARROW} { 
+	return DARROW;
+}
 
  /*
   * Keywords are case-insensitive except for the values true and false,
   * which must begin with a lower-case letter.
   */
 
+{IF} {
+	return IF;	
+}
+
+{FI} {
+	return FI;
+}
+
+{ELSE} {
+	return ELSE;
+}
+
+{THEN} {
+	return THEN;
+}
+
+{TYPE_ID} {
+	cool_yylval.symbol = idtable.add_string(yytext);
+	return (TYPEID);
+}
+
+{OBJECT_ID} {
+	cool_yylval.symbol = idtable.add_string(yytext);
+	return (OBJECTID);
+}
 
  /*
   *  String constants (C syntax)
