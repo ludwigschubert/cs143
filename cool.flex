@@ -5,8 +5,9 @@
 /*
  *  Stuff enclosed in %{ %} in the first section is copied verbatim to the
  *  output, so headers and global definitions are placed here to be visible
- * to the code in the file.  Don't remove anything that was here initially
+ *  to the code in the file.  Don't remove anything that was here initially
  */
+
 %{
 #include <cool-parse.h>
 #include <stringtab.h>
@@ -43,65 +44,154 @@ extern YYSTYPE cool_yylval;
  *  Add Your own definitions here
  */
 
+// indicates the level of nesting for comments
+int comment_level = 0;
+
 %}
 
 /*
- * Define names for regular expressions here.
+ *  Define names for regular expressions here.
+ *  Not in order, but mostly from include/cool-parse.h
  */
 
 WHITESPACE [ \t\v\f\r]*
-NEWLINE \n
-DIGIT [0-9]
-OBJECT_ID [a-z][a-zA-Z0-9_]*
-TYPE_ID   [A-Z][a-zA-Z0-9_]*
-DARROW =>
-ELSE (?i:else)
-IF   (?i:if)
-FI   (?i:fi)
-THEN (?i:then)
+NEWLINE    \n
+
+ELSE       (?i:else)
+IF         (?i:if)
+FI         (?i:fi)
+IN         (?i:in)
+INHERITS   (?i:inherits)
+LET        (?i:let)
+LOOP       (?i:loop)
+POOL       (?i:pool)
+THEN       (?i:then)
+WHILE      (?i:while)
+CASE       (?i:case)
+ESAC       (?i:esac)
+OF         (?i:of)
+NEW        (?i:new)
+ISVOID     (?i:isvoid)
+INTEGER    [0-9]+
+TRUE       t(?i:rue)
+FALSE      f(?i:alse)
+TYPE_ID    [A-Z][a-zA-Z0-9_]*
+OBJECT_ID  [a-z][a-zA-Z0-9_]*
+
+NOT        (?i:not)
+
+CLASS      (?i:class)
+
+DARROW     "=>"
+LE         "<="
+ASSIGN     "<-"
+OPERATORS  [+\-*/~<.,:;(){}@]
+
+COMMENT_BEGIN  "(*"
+COMMENT_END    "*)"
+COMMENT_LINE   --[^\n]*
+COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
+
+/*
+ *  States (+ INITIAL)
+ *  %s: inclusive, i.e. rules with no start conditions will also be active
+ *  %x: exclusive, i.e. rules with no start conditions will not also be active
+ */
+
+%x COMMENT
+%x STRING
 
 %%
 
-{NEWLINE} { curr_lineno++; }
+ /*   comments need to be indented from here on; yeah that was obvious O_o
+  *  ======================================================================
+  *                            RULES SECTION
+  *  ======================================================================
+  */
+
+ /*
+  *  Eat Whitespace
+  */
+
+<INITIAL,COMMENT>{NEWLINE} { curr_lineno++; }
 {WHITESPACE} { }
 
  /*
-  * Digits
+  *  Eat Comments
+  *  TODO: check for EOF
   */
 
-
- /*
-  *  Nested comments
-  */
-
-
- /*
-  *  The multiple-character operators.
-  */
-{DARROW} { 
-	return DARROW;
+{COMMENT_LINE} { curr_lineno++; }
+{COMMENT_BEGIN} {
+  if (comment_level == 0) BEGIN(COMMENT);
+  comment_level++;
 }
+<COMMENT>{COMMENT_BODY} { }
+<COMMENT>{COMMENT_END} {
+  comment_level--;
+  if (comment_level == 0) BEGIN(INITIAL);
+}
+
+{COMMENT_END} {
+  cool_yylval.error_msg = "Comment was closed outside of a comment";
+  return (ERROR);
+}
+
+
+ /*
+  *  Operators
+  *  Single-char operators are represented by themselves
+  */
+
+{OPERATORS} { return (yytext[0]);    }
+{ASSIGN}    { return (ASSIGN);    }
+{DARROW}    { return (DARROW);    }
 
  /*
   * Keywords are case-insensitive except for the values true and false,
   * which must begin with a lower-case letter.
   */
 
-{IF} {
-	return IF;	
+{ELSE}      { return (ELSE);      }
+{IF}        { return (IF);        }
+{FI}        { return (FI);        }
+{IN}        { return (IN);        }
+{INHERITS}  { return (INHERITS);  }
+{LET}       { return (LET);       }
+{LOOP}      { return (LOOP);      }
+{POOL}      { return (POOL);      }
+{THEN}      { return (THEN);      }
+{WHILE}     { return (WHILE);     }
+{CASE}      { return (CASE);      }
+{ESAC}      { return (ESAC);      }
+{OF}        { return (OF);        }
+{DARROW}    { return (DARROW);    }
+{NEW}       { return (NEW);       }
+{ISVOID}    { return (ISVOID);    }
+{ASSIGN}    { return (ASSIGN);    }
+{NOT}       { return (NOT);       }
+{LE}        { return (LE);        }
+{CLASS}     { return (CLASS);     }
+
+{INTEGER} {
+  cool_yylval.symbol = inttable.add_string(yytext);
+  return (INT_CONST);
 }
 
-{FI} {
-	return FI;
+{TRUE} {
+  cool_yylval.boolean = true;
+  return (BOOL_CONST);
 }
 
-{ELSE} {
-	return ELSE;
+{FALSE} {
+  cool_yylval.boolean = false;
+  return (BOOL_CONST);
 }
 
-{THEN} {
-	return THEN;
-}
+ /*
+  * Type and Object IDs (class & variable names)
+  * Must be put after keywords so they don't create longer matches.
+  */
 
 {TYPE_ID} {
 	cool_yylval.symbol = idtable.add_string(yytext);
@@ -115,9 +205,9 @@ THEN (?i:then)
 
  /*
   *  String constants (C syntax)
-  *  Escape sequence \c is accepted for all characters c. Except for 
+  *  Escape sequence \c is accepted for all characters c. Except for
   *  \n \t \b \f, the result is c.
-  *
+  *  TODO: THIS IS GONNA BE A PAIN
   */
 
 
