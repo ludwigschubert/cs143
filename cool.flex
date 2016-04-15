@@ -115,7 +115,7 @@ QUOTE               \"
 STRING_ESCAPE_SLASH \\
 STRING_NULL         \0
 STRING_NEWLINE      \n
-STRING_BODY         [^\n\\\0]
+STRING_BODY         [^\\\n\0]*
 
 ANY_CHAR .
 
@@ -210,7 +210,6 @@ ANY_CHAR .
   {OF}        { return (OF);        }
   {NEW}       { return (NEW);       }
   {ISVOID}    { return (ISVOID);    }
-  {ASSIGN}    { return (ASSIGN);    }
   {NOT}       { return (NOT);       }
   {LE}        { return (LE);        }
   {CLASS}     { return (CLASS);     }
@@ -262,6 +261,11 @@ ANY_CHAR .
 
 <STRING>{
 
+  STRING_ESCAPE_SLASH {
+    printf("Found STRING_ESCAPE_SLASH!");
+    BEGIN(STRING_ESCAPE);
+  }
+
   STRING_BODY {
     printf("Found STRING BODY: %s", yytext);
     if(!append_to_string_buf(yytext)) {
@@ -269,11 +273,6 @@ ANY_CHAR .
       cool_yylval.error_msg = "String is too long.";
       return (ERROR);
     };
-  }
-
-  STRING_ESCAPE_SLASH {
-    printf("Found STRING_ESCAPE_SLASH!");
-    BEGIN(STRING_ESCAPE);
   }
 
   /*
@@ -381,6 +380,9 @@ ANY_CHAR .
 
   QUOTE {
     BEGIN(INITIAL);
+    cool_yylval.symbol = stringtable.add_string(string_buf);
+    return (STR_CONST);
+
   }
 
   <<EOF>> {
@@ -391,14 +393,11 @@ ANY_CHAR .
 
 }
 
-
-
-
  /*
   *  Catch all other characters
   */
 
-<INITIAL>ANY_CHAR {
+ANY_CHAR {
   cool_yylval.error_msg = yytext;
   return (ERROR);
 }
