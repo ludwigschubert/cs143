@@ -47,26 +47,6 @@ extern YYSTYPE cool_yylval;
 // indicates the level of nesting for comments
 int comment_level = 0;
 
-// indicates the number of characters read
-int string_length = 0;
-
-/*
- * char* string is pointer to beginning of input string
- * char* string_buf_ptr is assumed to be pointing to write location in string_buf[]
- * int string_length is assumed to be up-to-date with the length of string stored in string_buf[]
- */
-bool append_to_string_buf(char* string) {
-  if (string == NULL) return false;
-  int append_length = strlen(string);
-  if (string_length + append_length < MAX_STR_CONST) {
-    strcpy(string_buf_ptr, string);
-    string_buf_ptr += append_length;
-    return true;
-  } else {
-    return false;
-  }
-}
-
 %}
 
 /*
@@ -110,14 +90,6 @@ COMMENT_BEGIN  "(*"
 COMMENT_END    "*)"
 COMMENT_LINE   --[^\n]*
 COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
-
-QUOTE               \"
-STRING_ESCAPE_SLASH \\
-STRING_NULL         \0
-STRING_NEWLINE      \n
-STRING_BODY         [^\\\n\0\"]
-
-ANY_CHAR .
 
 /*
  *  States (+ INITIAL)
@@ -169,7 +141,6 @@ ANY_CHAR .
   }
 
 }
-
 
 {COMMENT_END} {
   cool_yylval.error_msg = "Comment was closed outside of a comment";
@@ -242,60 +213,58 @@ ANY_CHAR .
     return (OBJECTID);
   }
 
-   /*
-    *  String constants (C syntax)
-    *  Escape sequence \c is accepted for all characters c. Except for
-    *  \n \t \b \f, the result is c.
-    */
-
 }
 
  /*
-   *  String constants (C syntax)
-   *  Escape sequence \c is accepted for all characters c. Except for
-   *  \n \t \b \f, the result is c.
-   *  TODO: THIS IS GONNA BE A PAIN
-   */
-   /*
-   {STRING_TXT} {
-     printf("string: %s\n",yytext);
-     cool_yylval.symbol = stringtable.add_string(yytext);
-     return (STR_CONST);
-   }
-   */
+  *  String constants (C syntax)
+  *  Escape sequence \c is accepted for all characters c. Except for
+  *  \n \t \b \f, the result is c.
+  *  TODO: THIS IS GONNA BE A PAIN
+  */
 
- <INITIAL>\" {
-   BEGIN(STRING);
- }
+<INITIAL>\" {
+  BEGIN(STRING);
+}
 
- <STRING>\" {
-   BEGIN(INITIAL);
- }
+<STRING>{
 
- <STRING><<EOF>> {
-   cool_yylval.error_msg = "Unterminated string constant";
-   BEGIN(INITIAL);
-   yyterminate();
-   return (ERROR);
- }
+  \" {
+    BEGIN(INITIAL);
+  }
 
+  \0 {
+    cool_yylval.error_msg = "String contains null character";
+    return (ERROR);
+  }
 
- <STRING>[^\\\"]\n {
-   cool_yylval.error_msg = "Unterminated string constant";
-   BEGIN(INITIAL);
-   return (ERROR);
- }
+  <<EOF>> {
+    cool_yylval.error_msg = "Unterminated string constant";
+    BEGIN(INITIAL);
+    return (ERROR);
+  }
 
- <STRING>(([^\n\0\"])|(\\[ ]*\n))*/\" {
-   int string_len = strlen(yytext);
-   if(string_len > MAX_STR_CONST)
-   {
-     cool_yylval.error_msg = "String constant too long.";
-     return (ERROR);
-   }
-   cool_yylval.symbol = stringtable.add_string(yytext);
-   return (STR_CONST);
- }
+  [^\\\"]\n {
+    cool_yylval.error_msg = "Unterminated string constant";
+    BEGIN(INITIAL);
+    return (ERROR);
+  }
 
+  (([^\n\0\"])|(\\[ ]*\n))*/\" {
+    int string_len = strlen(yytext);
+    if(string_len > MAX_STR_CONST)
+    {
+      cool_yylval.error_msg = "String constant too long";
+      return (ERROR);
+    }
+    cool_yylval.symbol = stringtable.add_string(yytext);
+    return (STR_CONST);
+  }
+
+}
+
+<INITIAL>. {
+  cool_yylval.error_msg = yytext;
+  return (ERROR);
+}
 
 %%
