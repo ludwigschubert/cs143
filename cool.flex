@@ -232,11 +232,6 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
     BEGIN(INITIAL);
   }
 
-  \0 {
-    cool_yylval.error_msg = "String contains null character";
-    return (ERROR);
-  }
-
   <<EOF>> {
     cool_yylval.error_msg = "EOF in string constant";
     BEGIN(INITIAL);
