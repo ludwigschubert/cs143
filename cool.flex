@@ -47,6 +47,26 @@ extern YYSTYPE cool_yylval;
 // indicates the level of nesting for comments
 int comment_level = 0;
 
+// indicates the number of characters read
+int string_length = 0;
+
+/*
+ * char* string is pointer to beginning of input string
+ * char* string_buf_ptr is assumed to be pointing to write location in string_buf[]
+ * int string_length is assumed to be up-to-date with the length of string stored in string_buf[]
+ */
+bool append_to_string_buf(char* string) {
+  if (string == NULL) return false;
+  int append_length = strlen(string);
+  if (string_length + append_length < MAX_STR_CONST) {
+    strcpy(string_buf_ptr, string);
+    string_buf_ptr += append_length;
+    return true;
+  } else {
+    return false;
+  }
+}
+
 %}
 
 /*
@@ -88,8 +108,16 @@ OPERATORS  [+\-*/~<>.,:;(){}@]
 
 COMMENT_BEGIN  "(*"
 COMMENT_END    "*)"
-COMMENT_LINE   --[^\n<EOF>]*
+COMMENT_LINE   --[^\n]*
 COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
+
+QUOTE               \"
+STRING_ESCAPE_SLASH \\
+STRING_NULL         \0
+STRING_NEWLINE      \n
+STRING_BODY         [^\n\\\0]
+
+ANY_CHAR .
 
 /*
  *  States (+ INITIAL)
@@ -99,6 +127,8 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
 
 %x COMMENT
 %x STRING
+%x STRING_ESCAPE
+%x STRING_OVERFLOW
 
 %%
 
@@ -129,7 +159,7 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
 
   {COMMENT_BODY} { }
 
-  {<EOF>} {
+  <<EOF>> {
     BEGIN(INITIAL);
     cool_yylval.error_msg = "Comment was not closed before EOF; comments cannot cross file borders.";
     return (ERROR);
@@ -149,77 +179,228 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
 }
 
 
+<INITIAL>{
+
+   /*
+    *  Operators
+    *  Single-char operators are represented by themselves
+    */
+
+  {OPERATORS} { return (int)(yytext[0]); }
+  {ASSIGN}    { return (ASSIGN);         }
+  {DARROW}    { return (DARROW);         }
+
+   /*
+    * Keywords are case-insensitive except for the values true and false,
+    * which must begin with a lower-case letter.
+    */
+
+  {ELSE}      { return (ELSE);      }
+  {IF}        { return (IF);        }
+  {FI}        { return (FI);        }
+  {IN}        { return (IN);        }
+  {INHERITS}  { return (INHERITS);  }
+  {LET}       { return (LET);       }
+  {LOOP}      { return (LOOP);      }
+  {POOL}      { return (POOL);      }
+  {THEN}      { return (THEN);      }
+  {WHILE}     { return (WHILE);     }
+  {CASE}      { return (CASE);      }
+  {ESAC}      { return (ESAC);      }
+  {OF}        { return (OF);        }
+  {NEW}       { return (NEW);       }
+  {ISVOID}    { return (ISVOID);    }
+  {ASSIGN}    { return (ASSIGN);    }
+  {NOT}       { return (NOT);       }
+  {LE}        { return (LE);        }
+  {CLASS}     { return (CLASS);     }
+
+  {INTEGER} {
+    cool_yylval.symbol = inttable.add_string(yytext);
+    return (INT_CONST);
+  }
+
+  {TRUE} {
+    cool_yylval.boolean = true;
+    return (BOOL_CONST);
+  }
+
+  {FALSE} {
+    cool_yylval.boolean = false;
+    return (BOOL_CONST);
+  }
+
+   /*
+    * Type and Object IDs (class & variable names)
+    * Must be put after keywords so they don't create longer matches.
+    */
+
+  {TYPE_ID} {
+    cool_yylval.symbol = idtable.add_string(yytext);
+    return (TYPEID);
+  }
+
+  {OBJECT_ID} {
+    cool_yylval.symbol = idtable.add_string(yytext);
+    return (OBJECTID);
+  }
+
+   /*
+    *  String constants (C syntax)
+    *  Escape sequence \c is accepted for all characters c. Except for
+    *  \n \t \b \f, the result is c.
+    */
+
+  {QUOTE} {
+    string_buf_ptr = string_buf;
+    string_length = 0;
+    BEGIN(STRING);
+    printf("Began string!");
+  }
+
+}
+
+<STRING>{
+
+  STRING_BODY {
+    printf("Found STRING BODY: %s", yytext);
+    if(!append_to_string_buf(yytext)) {
+      BEGIN(STRING_OVERFLOW);
+      cool_yylval.error_msg = "String is too long.";
+      return (ERROR);
+    };
+  }
+
+  STRING_ESCAPE_SLASH {
+    printf("Found STRING_ESCAPE_SLASH!");
+    BEGIN(STRING_ESCAPE);
+  }
+
+  /*
+   *  Error cases
+   */
+
+  STRING_NULL {
+    cool_yylval.error_msg = "Unescaped NULL character in string.";
+    return (ERROR);
+  }
+
+  STRING_NEWLINE {
+    cool_yylval.error_msg = "Unescaped Newline in string.";
+    return (ERROR);
+  }
+
+}
+
+<STRING_ESCAPE>{
+
+  /*
+   * TODO: refactor append_to_string_buf to handle these cases?
+   */
+
+  STRING_NEWLINE {
+    curr_lineno++;
+    if(!append_to_string_buf("\n")) {
+      BEGIN(STRING_OVERFLOW);
+      cool_yylval.error_msg = "String is too long.";
+      return (ERROR);
+    };
+    BEGIN(STRING);
+  }
+
+  n {
+    printf("Found newline character!");
+    if(append_to_string_buf("\n")) {
+      BEGIN(STRING);
+    } else {
+      BEGIN(STRING_OVERFLOW);
+      cool_yylval.error_msg = "String is too long.";
+      return (ERROR);
+    };
+
+  }
+
+  t {
+    if(!append_to_string_buf("\t")) {
+      BEGIN(STRING_OVERFLOW);
+      cool_yylval.error_msg = "String is too long.";
+      return (ERROR);
+    };
+    BEGIN(STRING);
+  }
+
+  b {
+    if(!append_to_string_buf("\b")) {
+      BEGIN(STRING_OVERFLOW);
+      cool_yylval.error_msg = "String is too long.";
+      return (ERROR);
+    };
+    BEGIN(STRING);
+  }
+
+  f {
+    if(!append_to_string_buf("\f")) {
+      BEGIN(STRING_OVERFLOW);
+      cool_yylval.error_msg = "String is too long.";
+      return (ERROR);
+    };
+    BEGIN(STRING);
+  }
+
+  \\ {
+    if(!append_to_string_buf("\\")) {
+      BEGIN(STRING_OVERFLOW);
+      cool_yylval.error_msg = "String is too long.";
+      return (ERROR);
+    };
+    BEGIN(STRING);
+  }
+
+  . {
+    if(!append_to_string_buf(yytext)) {
+      BEGIN(STRING_OVERFLOW);
+      cool_yylval.error_msg = "String is too long.";
+      return (ERROR);
+    };
+    BEGIN(STRING);
+  }
+
+  <<EOF>> {
+    BEGIN(INITIAL);
+    cool_yylval.error_msg = "String was not closed before EOF; EOFs can not be escaped.";
+    return (ERROR);
+  }
+
+}
+
+<STRING_OVERFLOW>{
+  ANY_CHAR { }
+}
+
+<STRING,STRING_OVERFLOW>{
+
+  QUOTE {
+    BEGIN(INITIAL);
+  }
+
+  <<EOF>> {
+    BEGIN(INITIAL);
+    cool_yylval.error_msg = "String was not closed before EOF; strings cannot cross file borders.";
+    return (ERROR);
+  }
+
+}
+
+
+
+
  /*
-  *  Operators
-  *  Single-char operators are represented by themselves
+  *  Catch all other characters
   */
 
-{OPERATORS} { return (int)(yytext[0]); }
-{ASSIGN}    { return (ASSIGN);         }
-{DARROW}    { return (DARROW);         }
-
- /*
-  * Keywords are case-insensitive except for the values true and false,
-  * which must begin with a lower-case letter.
-  */
-
-{ELSE}      { return (ELSE);      }
-{IF}        { return (IF);        }
-{FI}        { return (FI);        }
-{IN}        { return (IN);        }
-{INHERITS}  { return (INHERITS);  }
-{LET}       { return (LET);       }
-{LOOP}      { return (LOOP);      }
-{POOL}      { return (POOL);      }
-{THEN}      { return (THEN);      }
-{WHILE}     { return (WHILE);     }
-{CASE}      { return (CASE);      }
-{ESAC}      { return (ESAC);      }
-{OF}        { return (OF);        }
-{DARROW}    { return (DARROW);    }
-{NEW}       { return (NEW);       }
-{ISVOID}    { return (ISVOID);    }
-{ASSIGN}    { return (ASSIGN);    }
-{NOT}       { return (NOT);       }
-{LE}        { return (LE);        }
-{CLASS}     { return (CLASS);     }
-
-{INTEGER} {
-  cool_yylval.symbol = inttable.add_string(yytext);
-  return (INT_CONST);
+<INITIAL>ANY_CHAR {
+  cool_yylval.error_msg = yytext;
+  return (ERROR);
 }
-
-{TRUE} {
-  cool_yylval.boolean = true;
-  return (BOOL_CONST);
-}
-
-{FALSE} {
-  cool_yylval.boolean = false;
-  return (BOOL_CONST);
-}
-
- /*
-  * Type and Object IDs (class & variable names)
-  * Must be put after keywords so they don't create longer matches.
-  */
-
-{TYPE_ID} {
-  cool_yylval.symbol = idtable.add_string(yytext);
-  return (TYPEID);
-}
-
-{OBJECT_ID} {
-  cool_yylval.symbol = idtable.add_string(yytext);
-  return (OBJECTID);
-}
-
- /*
-  *  String constants (C syntax)
-  *  Escape sequence \c is accepted for all characters c. Except for
-  *  \n \t \b \f, the result is c.
-  *  TODO: THIS IS GONNA BE A PAIN
-  */
-
 
 %%
