@@ -131,7 +131,7 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
 
   <<EOF>> {
     BEGIN(INITIAL);
-    cool_yylval.error_msg = "Comment was not closed before EOF; comments cannot cross file borders.";
+    cool_yylval.error_msg = "EOF in comment";
     return (ERROR);
   }
 
@@ -143,7 +143,7 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
 }
 
 {COMMENT_END} {
-  cool_yylval.error_msg = "Comment was closed outside of a comment";
+  cool_yylval.error_msg = "Unmatched *)";
   return (ERROR);
 }
 
@@ -238,7 +238,7 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
   }
 
   <<EOF>> {
-    cool_yylval.error_msg = "Unterminated string constant";
+    cool_yylval.error_msg = "EOF in string constant";
     BEGIN(INITIAL);
     return (ERROR);
   }
