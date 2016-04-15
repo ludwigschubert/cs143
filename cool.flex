@@ -46,7 +46,8 @@ extern YYSTYPE cool_yylval;
 
 // indicates the level of nesting for comments
 int comment_level = 0;
-
+// string manipulation
+int strbuf_idx = 0;
 %}
 
 /*
