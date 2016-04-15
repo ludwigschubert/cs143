@@ -104,7 +104,7 @@ CLASS      (?i:class)
 DARROW     "=>"
 LE         "<="
 ASSIGN     "<-"
-OPERATORS  [+\-*/~<>.,:;(){}@]
+OPERATORS  [+\-\=*/~<>.,:;(){}@]
 
 COMMENT_BEGIN  "(*"
 COMMENT_END    "*)"
@@ -127,7 +127,6 @@ ANY_CHAR .
 
 %x COMMENT
 %x STRING
-%x STRING_OVERFLOW
 
 %%
 
@@ -249,71 +248,54 @@ ANY_CHAR .
     *  \n \t \b \f, the result is c.
     */
 
-  {QUOTE} {
-    string_buf_ptr = string_buf;
-    string_length = 0;
-    BEGIN(STRING);
-  }
-
-}
-
-<STRING>{
-
-  (([^\n\0\"])|(\\[ ]*\n))*/\" {
-    printf("::%s::\n",yytext);
-    cool_yylval.symbol = stringtable.add_string(yytext);
-    return (STR_CONST);
-  }
-
-  STRING_BODY {
-    printf("Found STRING BODY: %s", yytext);
-    if(!append_to_string_buf(yytext)) {
-      BEGIN(STRING_OVERFLOW);
-      cool_yylval.error_msg = "String is too long.";
-      return (ERROR);
-    };
-  }
-
-  QUOTE {
-    BEGIN(INITIAL);
-    cool_yylval.symbol = stringtable.add_string(string_buf);
-    return (STR_CONST);
-  }
-
-  /*
-   *  Error cases
-   */
-
-  STRING_NULL {
-    cool_yylval.error_msg = "Unescaped NULL character in string.";
-    return (ERROR);
-  }
-
-  STRING_NEWLINE {
-    cool_yylval.error_msg = "Unescaped Newline in string.";
-    return (ERROR);
-  }
-
-  <<EOF>> {
-    BEGIN(INITIAL);
-    cool_yylval.error_msg = "String was not closed before EOF; strings cannot cross file borders.";
-    return (ERROR);
-  }
-
-}
-
-
-<STRING_OVERFLOW>{
-  ANY_CHAR { }
 }
 
  /*
-  *  Catch all other characters
-  */
+   *  String constants (C syntax)
+   *  Escape sequence \c is accepted for all characters c. Except for
+   *  \n \t \b \f, the result is c.
+   *  TODO: THIS IS GONNA BE A PAIN
+   */
+   /*
+   {STRING_TXT} {
+     printf("string: %s\n",yytext);
+     cool_yylval.symbol = stringtable.add_string(yytext);
+     return (STR_CONST);
+   }
+   */
 
-ANY_CHAR {
-  cool_yylval.error_msg = yytext;
-  return (ERROR);
-}
+ <INITIAL>\" {
+   BEGIN(STRING);
+ }
+
+ <STRING>\" {
+   BEGIN(INITIAL);
+ }
+
+ <STRING><<EOF>> {
+   cool_yylval.error_msg = "Unterminated string constant";
+   BEGIN(INITIAL);
+   yyterminate();
+   return (ERROR);
+ }
+
+
+ <STRING>[^\\\"]\n {
+   cool_yylval.error_msg = "Unterminated string constant";
+   BEGIN(INITIAL);
+   return (ERROR);
+ }
+
+ <STRING>(([^\n\0\"])|(\\[ ]*\n))*/\" {
+   int string_len = strlen(yytext);
+   if(string_len > MAX_STR_CONST)
+   {
+     cool_yylval.error_msg = "String constant too long.";
+     return (ERROR);
+   }
+   cool_yylval.symbol = stringtable.add_string(yytext);
+   return (STR_CONST);
+ }
+
 
 %%
