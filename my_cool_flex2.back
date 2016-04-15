@@ -229,7 +229,7 @@ STRING_TXT     \"(([^\n\0])|(\\[ ]*\n))*\"
 }
 
 <STRING><<EOF>> {
-  cool_yylval.error_msg = "Unterminated string constant"
+  cool_yylval.error_msg = "Unterminated string constant";
   BEGIN(INITIAL);
   yyterminate();
   return (ERROR);
@@ -237,7 +237,7 @@ STRING_TXT     \"(([^\n\0])|(\\[ ]*\n))*\"
 
 
 <STRING>[^\\\"]\n {
-  cool_yylval.error_msg = "Unterminated string constant"
+  cool_yylval.error_msg = "Unterminated string constant";
   BEGIN(INITIAL);
   return (ERROR);
 }
