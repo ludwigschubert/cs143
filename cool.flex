@@ -115,7 +115,7 @@ QUOTE               \"
 STRING_ESCAPE_SLASH \\
 STRING_NULL         \0
 STRING_NEWLINE      \n
-STRING_BODY         [^\\\n\0]*
+STRING_BODY         [^\\\n\0\"]
 
 ANY_CHAR .
 
@@ -127,7 +127,6 @@ ANY_CHAR .
 
 %x COMMENT
 %x STRING
-%x STRING_ESCAPE
 %x STRING_OVERFLOW
 
 %%
@@ -254,16 +253,16 @@ ANY_CHAR .
     string_buf_ptr = string_buf;
     string_length = 0;
     BEGIN(STRING);
-    printf("Began string!");
   }
 
 }
 
 <STRING>{
 
-  STRING_ESCAPE_SLASH {
-    printf("Found STRING_ESCAPE_SLASH!");
-    BEGIN(STRING_ESCAPE);
+  (([^\n\0\"])|(\\[ ]*\n))*/\" {
+    printf("::%s::\n",yytext);
+    cool_yylval.symbol = stringtable.add_string(yytext);
+    return (STR_CONST);
   }
 
   STRING_BODY {
@@ -273,6 +272,12 @@ ANY_CHAR .
       cool_yylval.error_msg = "String is too long.";
       return (ERROR);
     };
+  }
+
+  QUOTE {
+    BEGIN(INITIAL);
+    cool_yylval.symbol = stringtable.add_string(string_buf);
+    return (STR_CONST);
   }
 
   /*
@@ -289,108 +294,17 @@ ANY_CHAR .
     return (ERROR);
   }
 
-}
-
-<STRING_ESCAPE>{
-
-  /*
-   * TODO: refactor append_to_string_buf to handle these cases?
-   */
-
-  STRING_NEWLINE {
-    curr_lineno++;
-    if(!append_to_string_buf("\n")) {
-      BEGIN(STRING_OVERFLOW);
-      cool_yylval.error_msg = "String is too long.";
-      return (ERROR);
-    };
-    BEGIN(STRING);
-  }
-
-  n {
-    printf("Found newline character!");
-    if(append_to_string_buf("\n")) {
-      BEGIN(STRING);
-    } else {
-      BEGIN(STRING_OVERFLOW);
-      cool_yylval.error_msg = "String is too long.";
-      return (ERROR);
-    };
-
-  }
-
-  t {
-    if(!append_to_string_buf("\t")) {
-      BEGIN(STRING_OVERFLOW);
-      cool_yylval.error_msg = "String is too long.";
-      return (ERROR);
-    };
-    BEGIN(STRING);
-  }
-
-  b {
-    if(!append_to_string_buf("\b")) {
-      BEGIN(STRING_OVERFLOW);
-      cool_yylval.error_msg = "String is too long.";
-      return (ERROR);
-    };
-    BEGIN(STRING);
-  }
-
-  f {
-    if(!append_to_string_buf("\f")) {
-      BEGIN(STRING_OVERFLOW);
-      cool_yylval.error_msg = "String is too long.";
-      return (ERROR);
-    };
-    BEGIN(STRING);
-  }
-
-  \\ {
-    if(!append_to_string_buf("\\")) {
-      BEGIN(STRING_OVERFLOW);
-      cool_yylval.error_msg = "String is too long.";
-      return (ERROR);
-    };
-    BEGIN(STRING);
-  }
-
-  . {
-    if(!append_to_string_buf(yytext)) {
-      BEGIN(STRING_OVERFLOW);
-      cool_yylval.error_msg = "String is too long.";
-      return (ERROR);
-    };
-    BEGIN(STRING);
-  }
-
-  <<EOF>> {
-    BEGIN(INITIAL);
-    cool_yylval.error_msg = "String was not closed before EOF; EOFs can not be escaped.";
-    return (ERROR);
-  }
-
-}
-
-<STRING_OVERFLOW>{
-  ANY_CHAR { }
-}
-
-<STRING,STRING_OVERFLOW>{
-
-  QUOTE {
-    BEGIN(INITIAL);
-    cool_yylval.symbol = stringtable.add_string(string_buf);
-    return (STR_CONST);
-
-  }
-
   <<EOF>> {
     BEGIN(INITIAL);
     cool_yylval.error_msg = "String was not closed before EOF; strings cannot cross file borders.";
     return (ERROR);
   }
 
+}
+
+
+<STRING_OVERFLOW>{
+  ANY_CHAR { }
 }
 
  /*
