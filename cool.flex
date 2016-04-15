@@ -29,8 +29,8 @@ extern FILE *fin; /* we read from this file */
  */
 #undef YY_INPUT
 #define YY_INPUT(buf,result,max_size) \
-	if ( (result = fread( (char*)buf, sizeof(char), max_size, fin)) < 0) \
-		YY_FATAL_ERROR( "read() in flex scanner failed");
+  if ( (result = fread( (char*)buf, sizeof(char), max_size, fin)) < 0) \
+    YY_FATAL_ERROR( "read() in flex scanner failed");
 
 char string_buf[MAX_STR_CONST]; /* to assemble string constants */
 char *string_buf_ptr;
@@ -79,17 +79,16 @@ TYPE_ID    [A-Z][a-zA-Z0-9_]*
 OBJECT_ID  [a-z][a-zA-Z0-9_]*
 
 NOT        (?i:not)
-
 CLASS      (?i:class)
 
 DARROW     "=>"
 LE         "<="
 ASSIGN     "<-"
-OPERATORS  [+\-*/~<.,:;(){}@]
+OPERATORS  [+\-*/~<>.,:;(){}@]
 
 COMMENT_BEGIN  "(*"
 COMMENT_END    "*)"
-COMMENT_LINE   --[^\n]*
+COMMENT_LINE   --[^\n<EOF>]*
 COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
 
 /*
@@ -118,19 +117,31 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
 
  /*
   *  Eat Comments
-  *  TODO: check for EOF
   */
 
-{COMMENT_LINE} { curr_lineno++; }
+{COMMENT_LINE} { }
 {COMMENT_BEGIN} {
   if (comment_level == 0) BEGIN(COMMENT);
   comment_level++;
 }
-<COMMENT>{COMMENT_BODY} { }
-<COMMENT>{COMMENT_END} {
-  comment_level--;
-  if (comment_level == 0) BEGIN(INITIAL);
+
+<COMMENT>{
+
+  {COMMENT_BODY} { }
+
+  {<EOF>} {
+    BEGIN(INITIAL);
+    cool_yylval.error_msg = "Comment was not closed before EOF; comments cannot cross file borders.";
+    return (ERROR);
+  }
+
+  {COMMENT_END} {
+    comment_level--;
+    if (comment_level == 0) BEGIN(INITIAL);
+  }
+
 }
+
 
 {COMMENT_END} {
   cool_yylval.error_msg = "Comment was closed outside of a comment";
@@ -143,9 +154,9 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
   *  Single-char operators are represented by themselves
   */
 
-{OPERATORS} { return (yytext[0]);    }
-{ASSIGN}    { return (ASSIGN);    }
-{DARROW}    { return (DARROW);    }
+{OPERATORS} { return (int)(yytext[0]); }
+{ASSIGN}    { return (ASSIGN);         }
+{DARROW}    { return (DARROW);         }
 
  /*
   * Keywords are case-insensitive except for the values true and false,
@@ -194,13 +205,13 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
   */
 
 {TYPE_ID} {
-	cool_yylval.symbol = idtable.add_string(yytext);
-	return (TYPEID);
+  cool_yylval.symbol = idtable.add_string(yytext);
+  return (TYPEID);
 }
 
 {OBJECT_ID} {
-	cool_yylval.symbol = idtable.add_string(yytext);
-	return (OBJECTID);
+  cool_yylval.symbol = idtable.add_string(yytext);
+  return (OBJECTID);
 }
 
  /*
