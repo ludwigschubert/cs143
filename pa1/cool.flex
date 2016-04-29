@@ -46,7 +46,8 @@ extern YYSTYPE cool_yylval;
 
 // indicates the level of nesting for comments
 int comment_level = 0;
-
+// string manipulation
+int strbuf_idx = 0;
 %}
 
 /*
@@ -251,7 +252,37 @@ COMMENT_BODY 	([^\*\(\n]|\([^\*]|\*[^\)\*])*
       cool_yylval.error_msg = "String constant too long";
       return (ERROR);
     }
-    cool_yylval.symbol = stringtable.add_string(yytext);
+    string_buf_ptr = yytext;
+    strbuf_idx = 0;
+    
+    while(string_buf_ptr != NULL) {
+      char curr_ch = *string_buf_ptr++;
+      if(curr_ch==92) {
+        curr_ch = *(string_buf_ptr++);
+        string_len--;
+        if(curr_ch == 98) {
+          curr_ch = 8; // backspace ascii
+        }
+        else if(curr_ch == 116) {
+          curr_ch = 9; // horizontal tab ascii
+        }
+        else if(curr_ch == 110) {
+          curr_ch = 10; // newline ascii
+        }
+        else if(curr_ch == 102) {
+          curr_ch = 12; // formfeed ascii
+        }
+      }
+      else if(curr_ch==0) // hit null
+        break;
+
+      string_buf[strbuf_idx++] = curr_ch;
+      if(strbuf_idx==MAX_STR_CONST-2) {
+        break;
+      }
+    }
+    string_buf[strbuf_idx] = 0;
+    cool_yylval.symbol = stringtable.add_string(string_buf);
     return (STR_CONST);
   }
 
