@@ -1,0 +1,6 @@
+#1 IF
+#1 OBJECTID test
+#2 OBJECTID identifier1
+#3 ELSE
+#4 OBJECTID identifier2
+#5 FI
